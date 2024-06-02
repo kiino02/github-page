@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>七並べ</title>
+    <style>
+        /* ページ全体のスタイル設定 */
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            background-color: #2e7d32;
+            color: white;
+        }
+
+        /* ゲームボードのスタイル設定 */
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(13, 50px);
+            grid-template-rows: repeat(4, 70px);
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        /* プレイヤーとCPUの手札のスタイル設定 */
+        .hand {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        /* カードのスタイル設定 */
+        .card {
+            width: 50px;
+            height: 70px;
+            background-color: white;
+            border: 1px solid #000;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: black;
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.5s ease;
+        }
+
+        /* ハートとダイヤの色を赤に設定 */
+        .heart, .diamond {
+            color: red;
+        }
+
+        /* カードを非表示にするクラス */
+        .hidden {
+            visibility: hidden;
+        }
+
+        /* プレイヤーの手札を無効化するクラス */
+        .disabled {
+            pointer-events: none;
+            opacity: 0.5;
+        }
+
+        /* カードの裏面を表現するクラス */
+        .back {
+            background-color: gray;
+            border: 1px solid #000;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            cursor: default;
+        }
+
+        /* 出せるカードを強調表示するクラス */
+        .highlight {
+            border-color: yellow;
+            border-width: 3px;
+        }
+
+        /* パスボタンのスタイル設定 */
+        .pass-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            color: black;
+            background-color: white;
+            border: 2px solid black;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .pass-button.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        /* メッセージのスタイル設定 */
+        .message {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            color: yellow;
+            visibility: hidden;
+        }
+
+        /* ターン表示のスタイル設定 */
+        .turn-indicator {
+            margin-top: 10px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        /* アニメーション設定 */
+        .slide-animation {
+            animation: slide 0.5s ease-out forwards;
+        }
+
+        @keyframes slide {
+            from {
+                transform: translate(0, 0);
+            }
+            to {
+                transform: translate(calc(var(--to-x) - var(--from-x)), calc(var(--to-y) - var(--from-y)));
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>七並べ</h1>
+    <div class="turn-indicator" id="turn-indicator">CPU1のターンです</div>
+    <div class="game-board" id="game-board">
+        <!-- JavaScriptがここにゲームボードを生成します -->
+    </div>
+    <h2>CPU1の手札 <span id="cpu1-pass-count">(残りパス回数：2回)</span></h2>
+    <div class="hand" id="cpu1-hand">
+        <!-- JavaScriptがここにCPU1の手札を生成します -->
+    </div>
+    <h2>CPU2の手札 <span id="cpu2-pass-count">(残りパス回数：2回)</span></h2>
+    <div class="hand" id="cpu2-hand">
+        <!-- JavaScriptがここにCPU2の手札を生成します -->
+    </div>
+    <h2>あなたの手札 <span id="player-pass-count">(残りパス回数：2回)</span></h2>
+    <div class="hand" id="player-hand">
+        <!-- JavaScriptがここにプレイヤーの手札を生成します -->
+    </div>
+    <button id="pass-button" class="pass-button disabled" onclick="passTurn()">パスする</button>
+    <div id="message" class="message"></div>
+    <script>
+        // スート（カードの種類）と値（カードの数または記号）を定義
+        const suits = ['heart', 'spade', 'diamond', 'club'];
+        const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+        // ゲームボードとプレイヤーの手札を参照するための要素を取得
+        const board = document.getElementById('game-board');
+        const playerHand = document.getElementById('player-hand');
+        const cpu1Hand = document.getElementById('cpu1-hand');
+        const cpu2Hand = document.getElementById('cpu2-hand');
+        const passButton = document.getElementById('pass-button');
+        const message = document.getElementById('message');
+        const turnIndicator = document.getElementById('turn-indicator');
+        const playerPassCountElement = document.getElementById('player-pass-count');
+        const cpu1PassCountElement = document.getElementById('cpu1-pass-count');
+        const cpu2PassCountElement = document.getElementById('cpu2-pass-count');
+
+        // プレイヤーの手札とゲームボードの状態を格納する変数
+        let playerHandCards = [];
+        let cpu1HandCards = [];
+        let cpu2HandCards = [];
+        let gameBoard = {
+            heart: Array(13).fill(null),
+            spade: Array(13).fill(null),
+            diamond: Array(13).fill(null),
+            club: Array(13).fill(null)
+        };
+        let currentPlayer;
+        let playerPassCount = 2;
+        let cpu1PassCount = 2;
+        let cpu2PassCount = 2;
+        let gameActive = true;
+        let playerPassedLastTurn = false;
+        let cpu1PassedLastTurn = false;
+        let cpu2PassedLastTurn = false;
+
+        // カードの要素を生成する関数
+        function createCardElement(card, clickHandler) {
+            const cardElement = document.createElement('div');
+            cardElement.className = `card ${card.suit}`;
+            cardElement.innerHTML = card.suit === 'heart' ? '♥︎' : card.suit === 'spade' ? '♠︎' : card.suit === 'diamond' ? '♦︎' : '♣︎';
+            cardElement.innerHTML += ` ${card.value}`;
+            if (clickHandler) {
+                cardElement.addEventListener('click', () => clickHandler(card));
+            }
+            return cardElement;
+        }
+
+        // ゲームを初期化する関数
+        function initializeGame() {
+            // デッキを作成してシャッフル
+            let deck = [];
+            suits.forEach(suit => {
+                values.forEach(value => {
+                    deck.push({suit, value});
+                });
+            });
+            deck = deck.sort(() => Math.random() - 0.5); // シャッフル
+
+            // ゲームボードを生成し、7を配置
+            suits.forEach(suit => {
+                for (let i = 0; i < 13; i++) {
+                    const emptyElement = document.createElement('div');
+                    emptyElement.className = 'card hidden';
+                    board.appendChild(emptyElement);
+                }
+                gameBoard[suit][6] = {suit, value: '7'}; // 7を中央に配置
+                const cardElement = createCardElement({suit, value: '7'});
+                board.children[suits.indexOf(suit) * 13 + 6].replaceWith(cardElement);
+
+                // デッキから7を削除
+                deck = deck.filter(card => !(card.suit === suit && card.value === '7'));
+            });
+
+            // プレイヤーとCPUの手札を設定（簡略化のため各13枚）
+            playerHandCards = deck.slice(0, 13);
+            cpu1HandCards = deck.slice(13, 26);
+            cpu2HandCards = deck.slice(26, 39);
+
+            // プレイヤーの手札を生成
+            playerHandCards.forEach(card => {
+                playerHand.appendChild(createCardElement(card, playCard));
+            });
+
+            // CPUの手札を生成（裏返しで表示）
+            updateCpuHandDisplay(cpu1Hand, cpu1HandCards);
+            updateCpuHandDisplay(cpu2Hand, cpu2HandCards);
+
+            // 先攻後攻をランダムに決定
+            const players = ['player', 'cpu1', 'cpu2'];
+            currentPlayer = players[Math.floor(Math.random() * players.length)];
+            updateTurnIndicator();
+            if (currentPlayer === 'player') {
+                enablePlayerHand();
+            } else {
+                setTimeout(cpuTurn, 1000);
+            }
+        }
+
+        // CPUの手札を更新して表示する関数
+        function updateCpuHandDisplay(cpuHand, cpuHandCards) {
+            cpuHand.innerHTML = ''; // 現在の表示をクリア
+            cpuHandCards.forEach(() => {
+                const backElement = document.createElement('div');
+                backElement.className = 'card back';
+                backElement.innerHTML = '🂠';
+                cpuHand.appendChild(backElement);
+            });
+        }
+
+        // カードをプレイする関数
+        function playCard(card) {
+            if (currentPlayer !== 'player' || !gameActive) return;
+
+            const suitIndex = suits.indexOf(card.suit);
+            const valueIndex = values.indexOf(card.value);
+            if (canPlayCard(card)) {
+                const cardElement = playerHand.children[playerHandCards.indexOf(card)];
+                const targetElement = board.children[suitIndex * 13 + valueIndex];
+
+                // スライドアニメーションのための位置情報を取得
+                const fromRect = cardElement.getBoundingClientRect();
+                const toRect = targetElement.getBoundingClientRect();
+                const dx = toRect.left - fromRect.left;
+                const dy = toRect.top - fromRect.top;
+
+                // アニメーション用のスタイルを設定
+                cardElement.style.setProperty('--from-x', `${fromRect.left}px`);
+                cardElement.style.setProperty('--from-y', `${fromRect.top}px`);
+                cardElement.style.setProperty('--to-x', `${toRect.left}px`);
+                cardElement.style.setProperty('--to-y', `${toRect.top}px`);
+                cardElement.classList.add('slide-animation');
+
+                // アニメーション終了後にカードをボードに追加し、手札から削除
+                cardElement.addEventListener('animationend', () => {
+                    gameBoard[card.suit][valueIndex] = card;
+                    const newCardElement = createCardElement(card);
+                    board.children[suitIndex * 13 + valueIndex].replaceWith(newCardElement);
+                    playerHand.removeChild(cardElement);
+                    playerHandCards = playerHandCards.filter(c => c !== card);
+
+                    playerPassedLastTurn = false; // プレイヤーがカードを出したため、パスフラグをリセット
+
+                    // プレイヤーターン終了
+                    nextTurn();
+                });
+            }
+        }
+
+        // プレイヤーの手札を無効にする関数
+        function disablePlayerHand() {
+            playerHand.classList.add('disabled');
+            playerHand.querySelectorAll('.card').forEach(card => {
+                card.classList.remove('highlight');
+            });
+            updatePassButtonState();
+        }
+
+        // プレイヤーの手札を有効にする関数
+        function enablePlayerHand() {
+            playerHand.classList.remove('disabled');
+            highlightPlayableCards();
+            updatePassButtonState();
+        }
+
+        // カードをプレイできるかどうかチェックする関数
+        function canPlayCard(card) {
+            const valueIndex = values.indexOf(card.value);
+            // 隣のカードが存在する場合にプレイ可能
+            return (valueIndex > 0 && gameBoard[card.suit][valueIndex - 1] !== null) || (valueIndex < 12 && gameBoard[card.suit][valueIndex + 1] !== null);
+        }
+
+        // プレイヤーの手札で出せるカードを強調表示する関数
+        function highlightPlayableCards() {
+            playerHand.querySelectorAll('.card').forEach((cardElement, index) => {
+                const card = playerHandCards[index];
+                if (canPlayCard(card)) {
+                    cardElement.classList.add('highlight');
+                } else {
+                    cardElement.classList.remove('highlight');
+                }
+            });
+        }
+
+        // パスボタンの状態を更新する関数
+        function updatePassButtonState() {
+            if (currentPlayer === 'player' && playerPassCount > 0 && gameActive) {
+                passButton.classList.remove('disabled');
+            } else {
+                passButton.classList.add('disabled');
+            }
+        }
+
+        // 残りパス回数を更新する関数
+        function updatePassCountDisplay() {
+            playerPassCountElement.innerHTML = `(残りパス回数：${playerPassCount}回)`;
+            cpu1PassCountElement.innerHTML = `(残りパス回数：${cpu1PassCount}回)`;
+            cpu2PassCountElement.innerHTML = `(残りパス回数：${cpu2PassCount}回)`;
+        }
+
+        // パスを実行する関数
+        function passTurn() {
+            if (currentPlayer !== 'player' || playerPassCount <= 0 || !gameActive) return;
+
+            playerPassCount--;
+            playerPassedLastTurn = true;
+            updatePassCountDisplay();
+            showMessage("プレイヤーはパスをしました");
+            nextTurn();
+        }
+
+        // メッセージを表示する関数
+        function showMessage(text) {
+            message.innerHTML = text;
+            message.style.visibility = 'visible';
+            setTimeout(() => {
+                message.style.visibility = 'hidden';
+            }, 2000);
+        }
+
+        // 勝敗を判定する関数
+        function checkForGameOver() {
+            if (playerPassCount === 0 && playerPassedLastTurn && !playerHandCards.some(canPlayCard)) {
+                gameActive = false;
+                showMessage("CPU1とCPU2の勝利です");
+                turnIndicator.innerHTML = "CPU1とCPU2の勝利です";
+                disablePlayerHand();
+                return true;
+            }
+
+            if (cpu1PassCount === 0 && cpu1PassedLastTurn && !cpu1HandCards.some(canPlayCard)) {
+                gameActive = false;
+                showMessage("プレイヤーとCPU2の勝利です");
+                turnIndicator.innerHTML = "プレイヤーとCPU2の勝利です";
+                disablePlayerHand();
+                return true;
+            }
+
+            if (cpu2PassCount === 0 && cpu2PassedLastTurn && !cpu2HandCards.some(canPlayCard)) {
+                gameActive = false;
+                showMessage("プレイヤーとCPU1の勝利です");
+                turnIndicator.innerHTML = "プレイヤーとCPU1の勝利です";
+                disablePlayerHand();
+                return true;
+            }
+
+            return false;
+        }
+
+        // ターンを切り替える関数
+        function nextTurn() {
+            if (checkForGameOver()) return;
+
+            const players = ['player', 'cpu1', 'cpu2'];
+            let nextPlayerIndex = (players.indexOf(currentPlayer) + 1) % players.length;
+            currentPlayer = players[nextPlayerIndex];
+
+            updateTurnIndicator();
+
+            if (currentPlayer === 'player') {
+                enablePlayerHand();
+            } else {
+                setTimeout(cpuTurn, 1000);
+            }
+        }
+
+        // CPUのターン
+        function cpuTurn() {
+            if (checkForGameOver()) return;
+
+            let cpuHandCards, cpuPassCount, updateCpuHandDisplayFn, setCpuPassedLastTurn;
+            if (currentPlayer === 'cpu1') {
+                cpuHandCards = cpu1HandCards;
+                cpuPassCount = cpu1PassCount;
+                updateCpuHandDisplayFn = () => updateCpuHandDisplay(cpu1Hand, cpu1HandCards);
+                setCpuPassedLastTurn = (val) => { cpu1PassedLastTurn = val; };
+            } else {
+                cpuHandCards = cpu2HandCards;
+                cpuPassCount = cpu2PassCount;
+                updateCpuHandDisplayFn = () => updateCpuHandDisplay(cpu2Hand, cpu2HandCards);
+                setCpuPassedLastTurn = (val) => { cpu2PassedLastTurn = val; };
+            }
+
+            let played = false;
+            for (let card of cpuHandCards) {
+                if (canPlayCard(card)) {
+                    const suitIndex = suits.indexOf(card.suit);
+                    const valueIndex = values.indexOf(card.value);
+                    const cardElement = currentPlayer === 'cpu1' ? cpu1Hand.children[cpuHandCards.indexOf(card)] : cpu2Hand.children[cpuHandCards.indexOf(card)];
+                    const targetElement = board.children[suitIndex * 13 + valueIndex];
+
+                    // スライドアニメーションのための位置情報を取得
+                    const fromRect = cardElement.getBoundingClientRect();
+                    const toRect = targetElement.getBoundingClientRect();
+                    const dx = toRect.left - fromRect.left;
+                    const dy = toRect.top - fromRect.top;
+
+                    // アニメーション用のスタイルを設定
+                    cardElement.style.setProperty('--from-x', `${fromRect.left}px`);
+                    cardElement.style.setProperty('--from-y', `${fromRect.top}px`);
+                    cardElement.style.setProperty('--to-x', `${toRect.left}px`);
+                    cardElement.style.setProperty('--to-y', `${toRect.top}px`);
+                    cardElement.classList.add('slide-animation');
+
+                    // アニメーション終了後にカードをボードに追加し、手札から削除
+                    cardElement.addEventListener('animationend', () => {
+                        gameBoard[card.suit][valueIndex] = card;
+                        const newCardElement = createCardElement(card);
+                        board.children[suitIndex * 13 + valueIndex].replaceWith(newCardElement);
+                        if (currentPlayer === 'cpu1') {
+                            cpu1Hand.removeChild(cardElement);
+                            cpu1HandCards = cpu1HandCards.filter(c => c !== card);
+                        } else {
+                            cpu2Hand.removeChild(cardElement);
+                            cpu2HandCards = cpu2HandCards.filter(c => c !== card);
+                        }
+
+                        updateCpuHandDisplayFn();
+
+                        // CPUターン終了
+                        setCpuPassedLastTurn(false);
+                        nextTurn();
+                    });
+
+                    played = true;
+                    break;
+                }
+            }
+
+            if (!played && cpuPassCount > 0) {
+                if (currentPlayer === 'cpu1') {
+                    cpu1PassCount--;
+                    cpu1PassedLastTurn = true;
+                } else {
+                    cpu2PassCount--;
+                    cpu2PassedLastTurn = true;
+                }
+                updatePassCountDisplay();
+                showMessage(currentPlayer === 'cpu1' ? "CPU1はパスを使用しました" : "CPU2はパスを使用しました");
+                setTimeout(cpuTurn, 1000); // 再度CPUのターンを試行
+                return;
+            }
+
+            if (!played && cpuPassCount === 0) {
+                checkForGameOver();
+                return;
+            }
+        }
+
+        // ターンインジケータを更新する関数
+        function updateTurnIndicator() {
+            turnIndicator.innerHTML = currentPlayer === 'player' ? "あなたのターンです" : currentPlayer === 'cpu1' ? "CPU1のターンです" : "CPU2のターンです";
+        }
+
+        // ゲームを初期化
+        initializeGame();
+    </script>
+</body>
+</html>
