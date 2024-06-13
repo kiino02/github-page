@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>弾幕シューティングゲーム</title>
+    <style>
+        /* キャンバスのスタイルを設定 */
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: black; /* 背景色を黒に設定 */
+        }
+    </style>
+</head>
+<body>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+<script>
+    // ゲーム用のキャンバス要素とその2D描画コンテキストを取得
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // 自機の設定
+    const player = {
+        x: canvas.width / 2, // 自機のX座標
+        y: canvas.height - 50, // 自機のY座標
+        width: 20, // 自機の幅
+        height: 20, // 自機の高さ
+        color: "blue", // 自機の色
+        speed: 5, // 自機の移動速度
+        bullets: [], // 自機が発射する弾の配列
+        isAlive: true, // 自機の生存状態
+        respawnTime: 3000, // リスポーンまでの時間（ミリ秒）
+        hitbox: {
+            offset: 5, // 当たり判定を小さくするオフセット
+        },
+        // 弾を発射する関数
+        shoot() {
+            if (this.isAlive) { // 自機が生存している場合のみ弾を発射
+                this.bullets.push({ 
+                    x: this.x + this.width / 2 - 2.5, 
+                    y: this.y, 
+                    width: 5, 
+                    height: 10, 
+                    color: "white", 
+                    speed: 7 
+                });
+            }
+        },
+        // 自機をリスポーンさせる関数
+        respawn() {
+            this.x = canvas.width / 2; // 自機の初期X座標
+            this.y = canvas.height - 50; // 自機の初期Y座標
+            this.isAlive = true; // 自機の生存状態をリセット
+        }
+    };
+
+    // 敵の設定
+    const enemy = {
+        x: canvas.width / 2, // 敵のX座標
+        y: 50, // 敵のY座標
+        width: 40, // 敵の幅
+        height: 40, // 敵の高さ
+        color: "red", // 敵の色
+        bullets: [], // 敵が発射する弾の配列
+        // 弾を発射する関数
+        shoot() {
+            const playerCenterX = player.x + player.width / 2; // 自機の中心X座標
+            const playerCenterY = player.y + player.height / 2; // 自機の中心Y座標
+            const enemyCenterX = this.x + this.width / 2; // 敵の中心X座標
+            const enemyCenterY = this.y + this.height / 2; // 敵の中心Y座標
+            const angle = Math.atan2(playerCenterY - enemyCenterY, playerCenterX - enemyCenterX); // 自機への角度計算
+            for (let i = -1; i <= 1; i++) { // 3方向に弾を発射
+                const bulletAngle = angle + i * Math.PI / 6; // 3方向に分けるための角度計算
+                this.bullets.push({
+                    x: enemyCenterX,
+                    y: enemyCenterY,
+                    width: 5,
+                    height: 5,
+                    color: "yellow",
+                    speed: 3,
+                    vx: Math.cos(bulletAngle) * 3, // 弾のX方向速度
+                    vy: Math.sin(bulletAngle) * 3  // 弾のY方向速度
+                });
+            }
+        }
+    };
+
+    let keys = {}; // キーの状態を保持するオブジェクト
+    let respawnTimer = null; // リスポーンタイマー
+
+    // ゲームの状態を更新する関数
+    function update() {
+        if (player.isAlive) { // 自機が生存している場合のみ操作を受け付ける
+            if (keys["ArrowLeft"] && player.x > 0) player.x -= player.speed; // 左移動
+            if (keys["ArrowRight"] && player.x < canvas.width - player.width) player.x += player.speed; // 右移動
+            if (keys["ArrowUp"] && player.y > 0) player.y -= player.speed; // 上移動
+            if (keys["ArrowDown"] && player.y < canvas.height - player.height) player.y += player.speed; // 下移動
+
+            player.bullets = player.bullets.filter(bullet => bullet.y > 0); // 画面外の弾を削除
+            player.bullets.forEach(bullet => bullet.y -= bullet.speed); // 弾を上方向に移動
+        }
+
+        enemy.bullets.forEach(bullet => {
+            bullet.x += bullet.vx; // 弾をX方向に移動
+            bullet.y += bullet.vy; // 弾をY方向に移動
+            if (player.isAlive && checkCollision(bullet, player)) { // 自機に弾が当たった場合
+                player.isAlive = false; // 自機を非生存状態にする
+                if (respawnTimer === null) {
+                    respawnTimer = setTimeout(() => {
+                        player.respawn(); // リスポーンさせる
+                        respawnTimer = null; // タイマーをリセット
+                    }, player.respawnTime); // リスポーンタイマーをセット
+                }
+            }
+        });
+
+        enemy.bullets = enemy.bullets.filter(bullet => bullet.y < canvas.height && bullet.y > 0 && bullet.x < canvas.width && bullet.x > 0); // 画面内の弾のみ残す
+    }
+
+    // ゲームの画面を描画する関数
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // 画面をクリア
+
+        if (player.isAlive) { // 自機が生存している場合のみ描画
+            ctx.fillStyle = player.color; // 自機の色を設定
+            ctx.fillRect(player.x, player.y, player.width, player.height); // 自機を描画
+
+            player.bullets.forEach(bullet => {
+                ctx.fillStyle = bullet.color; // 弾の色を設定
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height); // 弾を描画
+            });
+        }
+
+        ctx.fillStyle = enemy.color; // 敵の色を設定
+        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height); // 敵を描画
+
+        enemy.bullets.forEach(bullet => {
+            ctx.fillStyle = bullet.color; // 敵の弾の色を設定
+            ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height); // 敵の弾を描画
+        });
+    }
+
+    // 衝突判定を行う関数
+    function checkCollision(bullet, player) {
+        const hitboxX = player.x + player.hitbox.offset; // 当たり判定のX座標
+        const hitboxY = player.y + player.hitbox.offset; // 当たり判定のY座標
+        const hitboxWidth = player.width - player.hitbox.offset * 2; // 当たり判定の幅
+        const hitboxHeight = player.height - player.hitbox.offset * 2; // 当たり判定の高さ
+
+        // 弾と自機の当たり判定をチェック
+        return bullet.x < hitboxX + hitboxWidth &&
+               bullet.x + bullet.width > hitboxX &&
+               bullet.y < hitboxY + hitboxHeight &&
+               bullet.y + bullet.height > hitboxY;
+    }
+
+    // ゲームループ関数
+    function gameLoop() {
+        update(); // ゲームの状態を更新
+        draw(); // 画面を描画
+        requestAnimationFrame(gameLoop); // 次のフレームをリクエスト
+    }
+
+    // キーが押されたときのイベントリスナー
+    document.addEventListener("keydown", event => {
+        keys[event.key] = true; // 押されたキーを記録
+        if (event.key === "z") player.shoot(); // Zキーで自機が弾を発射
+    });
+
+    // キーが離されたときのイベントリスナー
+    document.addEventListener("keyup", event => {
+        keys[event.key] = false; // 離されたキーを記録
+    });
+
+    // 1秒ごとに敵が弾を発射するタイマー
+    setInterval(() => {
+        enemy.shoot();
+    }, 1000);
+
+    gameLoop(); // ゲームループを開始
+</script>
+</body>
+</html>
